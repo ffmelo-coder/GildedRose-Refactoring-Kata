@@ -400,6 +400,96 @@ class TestConjured:
         update([item])
         assert item.quality == 0   # would degrade by 4, clamped at 0
 
+    # --- Variações de quality inicial antes do vencimento ---
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_at_3_decreases_to_1(self):
+        # quality=3, degrade -2 → 1 (não -1 → 2)
+        item = make_item("Conjured Mana Cake", sell_in=5, quality=3)
+        update([item])
+        assert item.quality == 1
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_at_2_clamps_at_zero(self):
+        # quality=2, degrade -2 → 0 (não -1 → 1)
+        item = make_item("Conjured Mana Cake", sell_in=5, quality=2)
+        update([item])
+        assert item.quality == 0
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_at_50_decreases_to_48(self):
+        # quality máxima degrada -2 por dia
+        item = make_item("Conjured Mana Cake", sell_in=10, quality=50)
+        update([item])
+        assert item.quality == 48
+
+    # --- Último dia antes do vencimento (sell_in=1) ---
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_degrades_by_two_at_last_sell_day(self):
+        # sell_in=1: ainda não venceu, mas -2 já deve ser aplicado
+        item = make_item("Conjured Mana Cake", sell_in=1, quality=10)
+        update([item])
+        assert item.quality == 8
+
+    # --- sell_in exatamente no vencimento (sell_in=0) ---
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_degrades_by_four_on_sell_date(self):
+        # sell_in=0 → depois do update sell_in=-1 → degradação dupla = -4
+        item = make_item("Conjured Mana Cake", sell_in=0, quality=20)
+        update([item])
+        assert item.quality == 16
+
+    # --- Simulações multi-dia ---
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_over_three_days_before_sell_date(self):
+        # 3 dias com sell_in positivo: -2/dia → 10 - 6 = 4
+        item = make_item("Conjured Mana Cake", sell_in=5, quality=10)
+        update([item], days=3)
+        assert item.quality == 4
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_crossing_sell_date(self):
+        # sell_in=2, quality=12
+        # dia 1: si=1, q=10  (-2)
+        # dia 2: si=0, q=8   (-2)
+        # dia 3: si=-1, q=4  (-4, passou do vencimento)
+        item = make_item("Conjured Mana Cake", sell_in=2, quality=12)
+        update([item], days=3)
+        assert item.quality == 4
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_quality_reaches_zero_faster_than_normal(self):
+        # Com degradação -2/dia, quality=8 some em 4 dias (antes do vencimento).
+        # O código atual (-1/dia) ainda teria quality=4 nesse ponto.
+        item = make_item("Conjured Mana Cake", sell_in=10, quality=8)
+        update([item], days=4)
+        assert item.quality == 0   # atual: 8-4=4, esperado: 8-(4×2)=0
+
+    # --- Comparação direta com item normal ---
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_degrades_twice_as_fast_as_normal_item(self):
+        # Mesmos parâmetros: Conjured deve ter metade da quality do normal após 1 dia
+        normal = make_item("Elixir of the Mongoose", sell_in=5, quality=10)
+        conjured = make_item("Conjured Mana Cake", sell_in=5, quality=10)
+        update([normal])
+        update([conjured])
+        # normal: 10-1=9 | conjured: 10-2=8
+        assert conjured.quality == normal.quality - 1  # conjured perde 1 a mais
+
+    @pytest.mark.xfail(reason="Conjured items not yet implemented", strict=True)
+    def test_degrades_twice_as_fast_past_sell_date_vs_normal(self):
+        # Pós-vencimento: normal -2/dia, conjured -4/dia
+        normal = make_item("Elixir of the Mongoose", sell_in=-1, quality=20)
+        conjured = make_item("Conjured Mana Cake", sell_in=-1, quality=20)
+        update([normal])
+        update([conjured])
+        # normal: 20-2=18 | conjured: 20-4=16
+        assert conjured.quality == normal.quality - 2  # conjured perde 2 a mais
+
 
 # ---------------------------------------------------------------------------
 # Multiple items processed together
