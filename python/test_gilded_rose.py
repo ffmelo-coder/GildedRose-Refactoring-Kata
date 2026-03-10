@@ -492,6 +492,185 @@ class TestConjured:
 
 
 # ---------------------------------------------------------------------------
+# Ambiguidades de requisito — casos onde duas ou mais regras se intersectam
+# sem resolução explícita na especificação.
+#
+# Usamos Decision Tables para identificar as lacunas:
+#   pytest.mark.skip  → genuinamente ambíguo: múltiplas respostas válidas,
+#                        cliente precisa decidir antes de implementar
+#   pytest.mark.xfail → comportamento esperado claro, mas não implementado
+# ---------------------------------------------------------------------------
+
+# --- Aged Brie após o vencimento --------------------------------------------
+# A implementação atual escolheu q+2 (ambas as regras se acumulam),
+# já coberta em TestAgedBrie. As 3 alternativas abaixo estão em aberto.
+
+class TestAgedBrieAmbiguity:
+    """
+    Interpretações alternativas para Aged Brie após vencimento.
+    Implementação atual: q' = q+2. As outras possibilidades estão abaixo como skip.
+    """
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: regra do Brie sobrescreve vencimento? "
+        "Interpretação: q'=q+1. Requer decisão do cliente."
+    ))
+    def test_brie_overrides_sell_date_rule(self):
+        item = make_item("Aged Brie", sell_in=-1, quality=10)
+        update([item])
+        assert item.quality == 11
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: vencimento sobrescreve regra do Brie? "
+        "Interpretação: q'=q-2. Requer decisão do cliente."
+    ))
+    def test_sell_date_overrides_brie_rule(self):
+        item = make_item("Aged Brie", sell_in=-1, quality=10)
+        update([item])
+        assert item.quality == 8
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: 'degrada um passo mais rápido' aplicado à direção oposta? "
+        "Interpretação: q'=q (efeitos se cancelam). Requer decisão do cliente."
+    ))
+    def test_effects_cancel_each_other(self):
+        item = make_item("Aged Brie", sell_in=-1, quality=10)
+        update([item])
+        assert item.quality == 10
+
+
+# --- Conjured + Backstage pass -----------------------------------------------
+# Combinar 'conjured' com Backstage pass abre múltiplas ambiguidades.
+# O código atual trata "Conjured Backstage passes..." como item normal
+# (nome não coincide exatamente com o pass).
+
+CONJURED_PASS = "Conjured Backstage passes to a TAFKAL80ETC concert"
+
+
+class TestConjuredBackstagePass:
+    """
+    Ambiguidades de ingresso conjurado: ganho por faixa de dias indefinido.
+    Apenas o colapso após o show é inequívoco (xfail).
+    """
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: ingresso conjurado com >10 dias — ainda ganha quality? "
+        "Possibilidades: q+1 (bônus normal), q-2 (apenas conjurado), q-1 (conjurado "
+        "dimina o ganho), q'=0 (ingresso falso não tem valor). Requer decisão do cliente."
+    ))
+    def test_conjured_pass_gains_quality_above_10_days(self):
+        item = make_item(CONJURED_PASS, sell_in=15, quality=20)
+        update([item])
+        assert item.quality == 21  # ganho normal — uma das interpretações
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: ingresso conjurado 5-9 dias — bônus +2 se aplica? "
+        "Possibilidades: q+2, q-2, q-4, q+1 (metade do bônus), etc. "
+        "Requer decisão do cliente."
+    ))
+    def test_conjured_pass_5_to_9_days(self):
+        item = make_item(CONJURED_PASS, sell_in=7, quality=20)
+        update([item])
+        assert item.quality == 22  # bônus normal — uma das interpretações
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: ingresso conjurado 0-4 dias — bônus +3 se aplica? "
+        "Possibilidades: q+3, q-2, q-4, etc. Requer decisão do cliente."
+    ))
+    def test_conjured_pass_0_to_4_days(self):
+        item = make_item(CONJURED_PASS, sell_in=3, quality=20)
+        update([item])
+        assert item.quality == 23  # bônus normal — uma das interpretações
+
+    @pytest.mark.xfail(reason=(
+        "Conjured não implementado + nome não coincide com Backstage pass. "
+        "Após o show quality DEVE ser 0 — única interpretação razoável. "
+        "Atualmente tratado como item normal: quality sofre degradação dupla mas não zera."
+    ), strict=True)
+    def test_conjured_pass_drops_to_zero_after_concert(self):
+        item = make_item(CONJURED_PASS, sell_in=0, quality=20)
+        update([item])
+        assert item.quality == 0
+
+
+# --- Conjured + Aged Brie ----------------------------------------------------
+# Cruzar 'conjured' com Brie cria pelo menos 3 regras intersectando
+# (brie +1, vencimento ×2, conjured ×2). Sem resolução explícita na spec.
+
+CONJURED_BRIE = "Conjured Aged Brie"
+
+
+class TestConjuredAgedBrie:
+    """
+    Ambiguidades de Aged Brie conjurado.
+    Antes do vencimento: ganha ou perde quality? A que taxa?
+    Após o vencimento: três regras em conflito sem resolução.
+    """
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: Brie conjurado antes do vencimento — ganha ou perde quality? "
+        "Possibilidades: q+1 (brie domina), q-2 (conjurado domina), q-1 (conjurado "
+        "anula o ganho), q+2 (brie conjurado ganha duas vezes mais). "
+        "Requer decisão do cliente."
+    ))
+    def test_conjured_brie_before_sell_date(self):
+        item = make_item(CONJURED_BRIE, sell_in=5, quality=10)
+        update([item])
+        assert item.quality == 9  # conjurado anula ganho — uma das interpretações
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: Brie conjurado após vencimento — 3 regras em conflito: "
+        "brie aumenta, vencimento dobra degradação, conjurado dobra degradação. "
+        "Possibilidades: q+4, q+2, q+0, q-2, q-4, q-8, etc. "
+        "Requer decisão do cliente."
+    ))
+    def test_conjured_brie_past_sell_date(self):
+        item = make_item(CONJURED_BRIE, sell_in=-1, quality=10)
+        update([item])
+        # Sem asserção: qualquer valor seria uma escolha arbitrária de interpretação
+        pass
+
+
+# --- Conjured Misc após vencimento: multiplicar vs agregar ------------------
+# Duas leituras válidas da spec para item vencido conjurado.
+
+class TestConjuredPastSellDateInterpretations:
+    """
+    Duas interpretações para item Conjured após o vencimento:
+
+    A — penalidades multiplicam: q' = q-4
+        "conjured" = 2× mais rápido; "overdue" = 2× mais rápido → 2×2 = -4.
+        Coberta pelo xfail existente (test_quality_degrades_by_four_past_sell_date).
+
+    B — penalidades se acumulam (apply-then-aggregate): q' = q-3
+        "overdue" aplica -2 total; "conjured" adiciona -1 extra → q-3.
+        Ambas são válidas — requer decisão explícita do cliente.
+    """
+
+    @pytest.mark.skip(reason=(
+        "AMBIGUIDADE: interpretação B — penalidades agregadas: q'=q-3. "
+        "Implementação planeja q'=q-4 (interpretação A). "
+        "Requer decisão explícita do cliente antes de implementar."
+    ))
+    def test_overdue_conjured_aggregate_interpretation(self):
+        # Interpretação B: -2 (overdue normal) + -1 (extra conjurado) = -3
+        item = make_item("Conjured Mana Cake", sell_in=-1, quality=10)
+        update([item])
+        assert item.quality == 7  # q-3
+
+    @pytest.mark.xfail(reason=(
+        "Conjured não implementado. "
+        "Interpretação A (penalidades multiplicam): q'=q-4. "
+        "Leitura mais natural de 'twice as fast' composto com overdue."
+    ), strict=True)
+    def test_overdue_conjured_multiply_interpretation(self):
+        # Interpretação A: (-1 normal × 2 por vencimento) × 2 por conjurado = -4
+        item = make_item("Conjured Mana Cake", sell_in=-1, quality=10)
+        update([item])
+        assert item.quality == 6  # q-4
+
+
+# ---------------------------------------------------------------------------
 # Multiple items processed together
 # ---------------------------------------------------------------------------
 
