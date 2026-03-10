@@ -29,7 +29,7 @@ A lógica está concentrada no método `update_quality()` da classe `GildedRose`
 
 **[test_gilded_rose.py](test_gilded_rose.py)**
 
-O arquivo está organizado em 7 classes de teste:
+O arquivo está organizado em 11 classes de teste:
 
 ### `TestNormalItem` — 13 casos
 Testa itens genéricos como `+5 Dexterity Vest` e `Elixir of the Mongoose`.
@@ -63,7 +63,7 @@ Testa o item especial que envelhece bem.
 | `test_quality_increases_by_two_past_sell_date` | +2 com `sell_in` negativo |
 | `test_quality_never_exceeds_50` | máximo 50 |
 | `test_quality_at_49_caps_at_50` | 49 → 50 (cap aplicado) |
-| `test_quality_cap_past_sell_date_at_49` | cap mesmo com degradação dupla pós-prazo |
+| `test_quality_cap_past_sell_date_at_49` | cap mesmo com aumento duplo pós-prazo |
 | `test_quality_cap_past_sell_date_at_50` | permanece em 50 pós-prazo |
 | `test_quality_increases_from_zero` | sobe mesmo começando em 0 |
 | `test_quality_over_multiple_days` | progressão ao longo de 3 dias |
@@ -114,17 +114,71 @@ Testa as três faixas de incremento e o colapso pós-show. Cobre todos os **valo
 
 ---
 
-### `TestConjured` — 5 casos (3 xfail + 2 pass)
+### `TestConjured` — 15 casos (13 xfail + 2 pass)
 Documenta o comportamento esperado de itens Conjurados conforme a spec.
 Os casos marcados `xfail` **falham propositalmente** pois a funcionalidade ainda não foi implementada. Quando implementada, basta remover o `@pytest.mark.xfail`.
 
 | Caso | Status | O que verifica |
 |---|---|---|
-| `test_quality_degrades_by_two_before_sell_date` | **xfail** | -2/dia (atualmente só -1) |
-| `test_quality_degrades_by_four_past_sell_date` | **xfail** | -4/dia pós-prazo (atualmente só -2) |
-| `test_quality_never_goes_below_zero` | pass | `quality` não fica negativa (comportamento já correto) |
+| `test_quality_degrades_by_two_before_sell_date` | xfail | -2/dia (atualmente só -1) |
+| `test_quality_degrades_by_four_past_sell_date` | xfail | -4/dia pós-prazo (atualmente só -2) |
+| `test_quality_never_goes_below_zero` | pass | `quality` não fica negativa (já correto) |
 | `test_sell_in_decreases_by_one` | pass | `sell_in` reduz normalmente (já correto) |
-| `test_quality_clamps_at_zero_past_sell_date_low_quality` | **xfail** | clamp em 0 com degradação de -4 pós-prazo |
+| `test_quality_clamps_at_zero_past_sell_date_low_quality` | xfail | clamp com -4 pós-prazo |
+| `test_quality_at_3_decreases_to_1` | xfail | q=3 → 1 (não → 2) |
+| `test_quality_at_2_clamps_at_zero` | xfail | q=2 → 0 (não → 1) |
+| `test_quality_at_50_decreases_to_48` | xfail | q máxima -2/dia |
+| `test_quality_degrades_by_two_at_last_sell_day` | xfail | `sell_in=1`: -2 |
+| `test_quality_degrades_by_four_on_sell_date` | xfail | `sell_in=0`: -4 total |
+| `test_quality_over_three_days_before_sell_date` | xfail | 3 dias: 10→4 |
+| `test_quality_crossing_sell_date` | xfail | cruzando vencimento: 12→4 |
+| `test_quality_reaches_zero_faster_than_normal` | xfail | zera em 4 dias (normal levaria 8) |
+| `test_degrades_twice_as_fast_as_normal_item` | xfail | perde 1 a mais que item normal |
+| `test_degrades_twice_as_fast_past_sell_date_vs_normal` | xfail | perde 2 a mais pós-prazo |
+
+---
+
+### Ambiguidades de requisito — 4 classes (9 skip + 2 xfail)
+
+Estas classes documentam casos onde duas ou mais regras se intersectam sem resolução explícita na especificação, mapeados via Decision Table. Utiliza-se:
+
+- **`skip`** — genuinamente ambíguo: múltiplas respostas válidas, requer decisão antes de implementar.
+- **`xfail`** — comportamento esperado claro, mas não implementado.
+
+#### `TestAgedBrieAmbiguity` — 3 skip
+A implementação atual escolheu `q' = q+2` para Aged Brie após o vencimento (ambas as regras se acumulam), já coberta em `TestAgedBrie`. As 3 alternativas ficam registradas como lacunas de requisito:
+
+| Caso | Interpretação |
+|---|---|
+| `test_brie_overrides_sell_date_rule` | Regra do Brie sobrescreve vencimento → q+1 |
+| `test_sell_date_overrides_brie_rule` | Vencimento sobrescreve Brie → q-2 |
+| `test_effects_cancel_each_other` | Efeitos se cancelam → q+0 |
+
+#### `TestConjuredBackstagePass` — 3 skip + 1 xfail
+Item com nome `"Conjured Backstage passes to a TAFKAL80ETC concert"`. O código atual o trata como item normal (nome não coincide com o pass exato).
+
+| Caso | Status | O que verifica |
+|---|---|---|
+| `test_conjured_pass_gains_quality_above_10_days` | skip | Ainda ganha quality com >10 dias? |
+| `test_conjured_pass_5_to_9_days` | skip | Bônus +2 se aplica? |
+| `test_conjured_pass_0_to_4_days` | skip | Bônus +3 se aplica? |
+| `test_conjured_pass_drops_to_zero_after_concert` | xfail | Após o show quality = 0 (inequívoco) |
+
+#### `TestConjuredAgedBrie` — 2 skip
+Item com nome `"Conjured Aged Brie"`. Três regras em conflito sem resolução.
+
+| Caso | Ambiguidade |
+|---|---|
+| `test_conjured_brie_before_sell_date` | Ganha ou perde quality? Qual taxa? |
+| `test_conjured_brie_past_sell_date` | 3 regras: brie +, vencimento ×2, conjurado ×2 |
+
+#### `TestConjuredPastSellDateInterpretations` — 1 skip + 1 xfail
+Documenta as duas leituras válidas para item Conjured após o vencimento:
+
+| Interpretação | Status | Resultado |
+|---|---|---|
+| **A — multiplicar** (-1 × 2 overdue × 2 conjured = -4) | xfail | `q' = q-4` — leitura mais natural |
+| **B — agregar** (overdue -2 + conjured extra -1 = -3) | skip | `q' = q-3` — também válida, requer decisão |
 
 ---
 
@@ -133,7 +187,7 @@ Garante que a lista de itens é processada corretamente.
 
 | Caso | O que verifica |
 |---|---|
-| `test_items_are_processed_independently` | 3 itens de tipos diferentes processados sem interferência |
+| `test_items_are_processed_independently` | 3 itens de tipos diferentes sem interferência |
 | `test_all_item_types_together` | simulação completa com todos os tipos |
 | `test_empty_items_list` | lista vazia não lança exceção |
 | `test_single_item_list` | lista com 1 item funciona |
@@ -169,9 +223,10 @@ Valida a classe `Item` em si.
 ## Resumo dos resultados esperados
 
 ```
-70 testes coletados
-67 passam    (comportamento atual correto)
- 3 xfailed   (Conjured não implementado — falha esperada e documentada)
+91 testes coletados
+67 passam     (comportamento atual correto)
+15 xfailed    (feature pendente — falha esperada e documentada)
+ 9 skipped    (ambiguidade de requisito — aguardando decisão)
  0 erros
 ```
 
@@ -216,10 +271,16 @@ python -m pytest test_gilded_rose.py::TestBackstagePasses -v
 python -m pytest test_gilded_rose.py::TestAgedBrie::test_quality_increases_by_two_on_sell_date -v
 ```
 
-### Ver os xfail detalhados
+### Ver xfail e skip detalhados
 
 ```bash
-python -m pytest test_gilded_rose.py -v -r xf
+python -m pytest test_gilded_rose.py -v -r xfs
+```
+
+### Rodar apenas os testes de ambiguidade
+
+```bash
+python -m pytest test_gilded_rose.py -k "Ambiguity or ConjuredBrie or ConjuredBackstage or Interpretations" -v
 ```
 
 ### Gerar relatório de cobertura (requer `coverage`)
@@ -230,6 +291,8 @@ coverage run -m pytest test_gilded_rose.py
 coverage report -m
 coverage html   # gera htmlcov/index.html
 ```
+
+> **Nota:** o coverage mede quais **linhas de código foram executadas**, não quais testes passaram ou falharam. Os testes `xfail` e `skip` ainda executam o código de `gilded_rose.py`, por isso o coverage mostra 100% mesmo com features pendentes.
 
 ---
 
@@ -249,4 +312,11 @@ A verificação `sell_in < 0` que zera a qualidade usa o valor **depois** do dec
 O item `Conjured Mana Cake` presente em `texttest_fixture.py` é tratado como item normal. Os testes `xfail` documentam a funcionalidade pendente.
 
 ### 4. Aged Brie com sell_in=0 aumenta 2 por dia
-Por que +2? A lógica incrementa 1 no bloco principal e mais 1 no bloco de pós-prazo (`sell_in < 0` após decremento). Os testes `test_quality_increases_by_two_on_sell_date` e `test_quality_increases_by_two_past_sell_date` cobrem esse comportamento.
+A lógica incrementa 1 no bloco principal e mais 1 no bloco de pós-prazo (`sell_in < 0` após decremento). Os testes `test_quality_increases_by_two_on_sell_date` e `test_quality_increases_by_two_past_sell_date` cobrem esse comportamento. Esta é uma **escolha de implementação** — outras interpretações estão documentadas em `TestAgedBrieAmbiguity`.
+
+### 5. Ambiguidades de requisito mapeadas por Decision Table
+Ao cruzar todas as combinações possíveis de regras (tipo × vencimento × conjurado), identificam-se lacunas onde a especificação não define o comportamento. Os casos mais relevantes:
+- Aged Brie após o vencimento: 4 interpretações possíveis, código atual usa q+2.
+- Conjured + Backstage pass: ganho por faixa indefinido.
+- Conjured + Aged Brie: até 3 regras em conflito simultâneo.
+- Conjured após vencimento: penalidades multiplicam (-4) ou agregam (-3)?
